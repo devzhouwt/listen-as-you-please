@@ -26,9 +26,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 160px;
-  max-width: 240px;
+  min-width: 140px;
+  max-width: 200px;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .player-song-name {
@@ -37,6 +38,20 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.player-loading-icon {
+  font-size: 14px;
+  color: #1677ff;
+  animation: playerSpin 1s linear infinite;
+}
+
+@keyframes playerSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .player-song-format {
@@ -47,6 +62,13 @@
 .player-controls {
   flex: 1;
   min-width: 0;
+}
+
+.player-controls-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
 
 .player-play-btn {
@@ -63,6 +85,20 @@
   font-size: 28px;
 }
 
+.player-skip-btn {
+  font-size: 22px !important;
+  height: 36px !important;
+  width: 36px !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.player-skip-btn .anticon {
+  font-size: 22px;
+}
+
 .player-time {
   font-size: 12px;
   color: #888;
@@ -73,8 +109,47 @@
 
 .player-progress {
   flex: 1;
-  margin: 0 8px;
-  min-width: 80px;
+  min-width: 60px;
+}
+
+.player-progress .ant-slider-track {
+  height: 6px;
+}
+
+.player-progress .ant-slider-rail {
+  height: 6px;
+}
+
+.player-progress .ant-slider-handle {
+  width: 18px !important;
+  height: 18px !important;
+  margin-top: 0 !important;
+  transform: translateX(-50%) !important;
+  /* 导轨中心 = containerPadding(4px) + railHeight/2(3px) = 7px */
+  /* handle中心对齐: 7 - handleSize/2(9px) = -2px */
+  inset-block-start: -2px !important;
+}
+
+/* 覆盖伪元素 ::after 尺寸，使其与 handle 保持一致 */
+.player-progress .ant-slider-handle::after {
+  width: 18px !important;
+  height: 18px !important;
+  inset-block-start: 0 !important;
+  inset-inline-start: 0 !important;
+}
+
+/* hover/active/focus 状态也保持 18px */
+.player-progress .ant-slider-handle:hover::after,
+.player-progress .ant-slider-handle:active::after,
+.player-progress .ant-slider-handle:focus::after {
+  width: 18px !important;
+  height: 18px !important;
+  inset-block-start: 0 !important;
+  inset-inline-start: 0 !important;
+}
+
+.player-progress .ant-slider-step {
+  height: 6px;
 }
 
 .player-extra {
@@ -95,7 +170,7 @@
 @media (max-width: 768px) {
   .player-song-info {
     min-width: 80px;
-    max-width: 120px;
+    max-width: 100px;
   }
 
   .player-extra {
@@ -104,5 +179,9 @@
 
   .player-time {
     font-size: 11px;
+  }
+
+  .player-progress {
+    min-width: 40px;
   }
 }

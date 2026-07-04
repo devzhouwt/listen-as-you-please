@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
-import { Card, Row, Col, Spin, Empty, Typography } from 'antd';
-import { FolderFilled, ArrowLeftOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Spin, Empty, Typography, Button, Space, Tooltip } from 'antd';
+import { FolderFilled, ArrowLeftOutlined, LoadingOutlined, SyncOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { createApi, fetchContents, extractPlaylists, extractSongs, formatFileSize } from '@/api/gitee';
 import { useAppStore } from '@/store';
 import type { SongInfo } from '@/api/types';
@@ -10,9 +10,10 @@ const { Title, Text } = Typography;
 
 interface PlaylistListProps {
   onPlay: (song: SongInfo) => void;
+  onPlayAll: () => void;
 }
 
-const PlaylistList: React.FC<PlaylistListProps> = ({ onPlay }) => {
+const PlaylistList: React.FC<PlaylistListProps> = ({ onPlay, onPlayAll }) => {
   const repoConfig = useAppStore((s) => s.repoConfig);
   const playlists = useAppStore((s) => s.playlists);
   const currentPlaylist = useAppStore((s) => s.currentPlaylist);
@@ -20,6 +21,11 @@ const PlaylistList: React.FC<PlaylistListProps> = ({ onPlay }) => {
   const loading = useAppStore((s) => s.loading);
   const currentSong = useAppStore((s) => s.currentSong);
   const isPlaying = useAppStore((s) => s.isPlaying);
+  const isAudioLoading = useAppStore((s) => s.isAudioLoading);
+  const isPlayAllActive = useAppStore((s) => s.isPlayAllActive);
+  const isLoopMode = useAppStore((s) => s.isLoopMode);
+  const setPlayAllActive = useAppStore((s) => s.setPlayAllActive);
+  const setLoopMode = useAppStore((s) => s.setLoopMode);
   const setPlaylists = useAppStore((s) => s.setPlaylists);
   const setSongs = useAppStore((s) => s.setSongs);
   const setCurrentPlaylist = useAppStore((s) => s.setCurrentPlaylist);
@@ -99,28 +105,59 @@ const PlaylistList: React.FC<PlaylistListProps> = ({ onPlay }) => {
           <span className="back-btn" onClick={backToPlaylists}>
             <ArrowLeftOutlined /> 返回歌单
           </span>
-          <Title level={4} style={{ margin: '8px 0 0' }}>{currentPlaylist.name}</Title>
-          <Text type="secondary">共 {songs.length} 首歌曲</Text>
+          <div className="playlist-header-row">
+            <div className="playlist-header-left">
+              <Title level={4} style={{ margin: '8px 0 0' }}>{currentPlaylist.name}</Title>
+              <Text type="secondary" className="playlist-song-count">共 {songs.length} 首歌曲</Text>
+            </div>
+            <Space size="small">
+              <Button
+                type={isPlayAllActive ? 'primary' : 'default'}
+                size="small"
+                icon={<PlayCircleOutlined />}
+                onClick={onPlayAll}
+                className="play-all-btn"
+              >
+                {isPlayAllActive ? '播放中…' : '播放全部'}
+              </Button>
+              <Tooltip title={isLoopMode ? '循环模式已开启' : '循环模式已关闭'}>
+                <Button
+                  type={isLoopMode ? 'primary' : 'default'}
+                  size="small"
+                  icon={<SyncOutlined />}
+                  onClick={() => setLoopMode(!isLoopMode)}
+                  className="loop-toggle-btn"
+                />
+              </Tooltip>
+            </Space>
+          </div>
         </div>
         <div className="song-grid">
           {songs.map((song) => {
             const isThisPlaying = currentSong?.key === song.key;
             const showPause = isThisPlaying && isPlaying;
+            const showLoading = isThisPlaying && isAudioLoading;
             return (
               <div
                 key={song.key}
                 className={`song-item ${isThisPlaying ? 'song-item-active' : ''}`}
-                onClick={() => onPlay(song)}
+                onClick={() => {
+                  setPlayAllActive(false);
+                  onPlay(song);
+                }}
               >
                 <div className="song-item-info">
-                  <span className="song-item-name">{song.name}</span>
+                  <span className="song-item-name">
+                    {showLoading && <LoadingOutlined className="song-loading-icon" />}
+                    {song.name}
+                  </span>
                   <span className="song-item-meta">
                     <span className="song-format-tag">{song.format.toUpperCase()}</span>
                     {song.size > 0 && <span className="song-size">{formatFileSize(song.size)}</span>}
                   </span>
                 </div>
                 <div className="song-item-action">
-                  {showPause ? '⏸' : '▶'}
+                  {showLoading ? <LoadingOutlined /> : (showPause ? '⏸' : '▶')}
                 </div>
               </div>
             );

@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Slider, Typography, Space, Tooltip } from 'antd';
+import { Button, Slider, Typography, Space, Tooltip, Spin } from 'antd';
 import {
   PlayCircleOutlined,
   PauseCircleOutlined,
+  StepBackwardOutlined,
+  StepForwardOutlined,
   ClearOutlined,
   FolderOpenOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import { useAppStore } from '@/store';
 import { getTotalSize, clearAllCache } from '@/cache/audioCache';
@@ -16,11 +19,14 @@ const { Text } = Typography;
 interface PlayerBarProps {
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
+  onPrev: () => void;
+  onNext: () => void;
 }
 
-const PlayerBar: React.FC<PlayerBarProps> = ({ onTogglePlay, onSeek }) => {
+const PlayerBar: React.FC<PlayerBarProps> = ({ onTogglePlay, onSeek, onPrev, onNext }) => {
   const currentSong = useAppStore((s) => s.currentSong);
   const isPlaying = useAppStore((s) => s.isPlaying);
+  const isAudioLoading = useAppStore((s) => s.isAudioLoading);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [cacheSize, setCacheSize] = useState(0);
@@ -91,8 +97,13 @@ const PlayerBar: React.FC<PlayerBarProps> = ({ onTogglePlay, onSeek }) => {
         <div className="player-song-info">
           {currentSong ? (
             <>
-              <Text ellipsis className="player-song-name">{currentSong.name}</Text>
-              <Text type="secondary" className="player-song-format">{currentSong.format.toUpperCase()}</Text>
+              <Text ellipsis className="player-song-name">
+                {isAudioLoading && <LoadingOutlined className="player-loading-icon" />}
+                {currentSong.name}
+              </Text>
+              <Text type="secondary" className="player-song-format">
+                {isAudioLoading ? '加载中…' : currentSong.format.toUpperCase()}
+              </Text>
             </>
           ) : (
             <Text type="secondary" className="player-song-name">未播放</Text>
@@ -101,13 +112,27 @@ const PlayerBar: React.FC<PlayerBarProps> = ({ onTogglePlay, onSeek }) => {
 
         {/* 中间：播放控制 */}
         <div className="player-controls">
-          <Space align="center" style={{ width: '100%' }}>
+          <div className="player-controls-inner">
             <Button
               type="text"
-              icon={isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+              icon={<StepBackwardOutlined />}
+              onClick={onPrev}
+              disabled={!currentSong || isAudioLoading}
+              className="player-skip-btn"
+            />
+            <Button
+              type="text"
+              icon={isAudioLoading ? <LoadingOutlined /> : (isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />)}
               onClick={onTogglePlay}
-              disabled={!currentSong}
+              disabled={!currentSong || isAudioLoading}
               className="player-play-btn"
+            />
+            <Button
+              type="text"
+              icon={<StepForwardOutlined />}
+              onClick={onNext}
+              disabled={!currentSong || isAudioLoading}
+              className="player-skip-btn"
             />
             <span className="player-time">{formatTime(currentTime)}</span>
             <Slider
@@ -120,7 +145,7 @@ const PlayerBar: React.FC<PlayerBarProps> = ({ onTogglePlay, onSeek }) => {
               disabled={!currentSong}
             />
             <span className="player-time">{formatTime(duration)}</span>
-          </Space>
+          </div>
         </div>
 
         {/* 右侧：缓存管理 */}

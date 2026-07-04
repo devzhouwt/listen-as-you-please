@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Card, Form, Input, Button, message, Space, Typography, Alert } from 'antd';
 import {
-  GithubOutlined,
+  CustomerServiceOutlined,
+  UserOutlined,
   KeyOutlined,
   FolderOutlined,
   SafetyCertificateOutlined,
+  ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { createApi, fetchContents } from '@/api/gitee';
 import { useAppStore } from '@/store';
@@ -18,6 +20,7 @@ const RepoConfig: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const setRepoConfig = useAppStore((s) => s.setRepoConfig);
   const clearRepoConfig = useAppStore((s) => s.clearRepoConfig);
+  const closeConfig = useAppStore((s) => s.closeConfig);
   const repoConfig = useAppStore((s) => s.repoConfig);
 
   const handleSave = async (values: RepoConfig) => {
@@ -46,7 +49,7 @@ const RepoConfig: React.FC = () => {
     <div className="repo-config-container">
       <div className="repo-config-header">
         <Title level={2}>
-          <GithubOutlined /> 随心听
+          <CustomerServiceOutlined /> 随心听
         </Title>
         <Text type="secondary">将 Gitee 仓库作为个人云端音乐库</Text>
       </div>
@@ -72,7 +75,7 @@ const RepoConfig: React.FC = () => {
             rules={[{ required: true, message: '请输入仓库所有者' }]}
           >
             <Input
-              prefix={<GithubOutlined />}
+              prefix={<UserOutlined />}
               placeholder="例如：your-username"
               size="large"
             />
@@ -108,6 +111,11 @@ const RepoConfig: React.FC = () => {
               <Button type="primary" htmlType="submit" loading={loading} size="large">
                 保存并加载
               </Button>
+              {repoConfig && (
+                <Button icon={<ArrowLeftOutlined />} onClick={closeConfig} size="large">
+                  返回
+                </Button>
+              )}
               <Button danger onClick={handleClear} size="large">
                 清除配置
               </Button>

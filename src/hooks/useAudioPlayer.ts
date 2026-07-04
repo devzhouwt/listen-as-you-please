@@ -49,29 +49,7 @@ function decodeBase64(base64: string): Promise<ArrayBuffer> {
 export function useAudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const store = useAppStore();
-
-  // 初始化 Audio 元素并挂载到 DOM
-  useEffect(() => {
-    if (!audioRef.current) {
-      audioRef.current = new Audio();
-      audioRef.current.preload = 'auto';
-      audioRef.current.id = 'global-audio';
-      audioRef.current.style.display = 'none';
-      document.body.appendChild(audioRef.current);
-    }
-
-    const audio = audioRef.current;
-
-    const onEnded = () => {
-      store.setIsPlaying(false);
-    };
-
-    audio.addEventListener('ended', onEnded);
-
-    return () => {
-      audio.removeEventListener('ended', onEnded);
-    };
-  }, [store]);
+  const playRef = useRef<((song: SongInfo) => Promise<void>) | null>(null);
 
   /** 播放指定歌曲 */
   const play = useCallback(async (song: SongInfo) => {
@@ -84,15 +62,24 @@ export function useAudioPlayer() {
       return;
     }
 
-    // 如果点击的是同一首歌且正在播放，则暂停
     const currentState = useAppStore.getState();
+
+    // 如果点击的是同一首歌且正在播放，则暂停
     if (currentState.currentSong?.key === song.key && currentState.isPlaying) {
       audio.pause();
       store.setIsPlaying(false);
+      store.setAudioLoading(false);
       return;
     }
 
+    // 切歌：立即暂停当前播放
+    if (currentState.isPlaying) {
+      audio.pause();
+      store.setIsPlaying(false);
+    }
+
     store.setCurrentSong(song);
+    store.setAudioLoading(true);
 
     try {
       const cacheKey = getCacheKey(song.key);
@@ -104,10 +91,11 @@ export function useAudioPlayer() {
         audio.src = url;
         await audio.play();
         store.setIsPlaying(true);
+        store.setAudioLoading(false);
         return;
       }
 
-      // 缓存未命中，从 Gitee 下载
+      // 缓存未命中，从远程仓库下载
       const api = createApi(config.token);
       const base64 = await fetchFileBase64(api, config.owner, config.repo, song.path);
       
@@ -136,11 +124,61 @@ export function useAudioPlayer() {
       audio.src = url;
       await audio.play();
       store.setIsPlaying(true);
+      store.setAudioLoading(false);
     } catch (err: any) {
+      store.setAudioLoading(false);
       message.error(`加载失败: ${err?.message || '未知错误'}`);
       store.setCurrentSong(null);
       store.setIsPlaying(false);
     }
+  }, [store]);
+
+  // 始终保持 playRef 指向最新的 play
+  playRef.current = play;
+
+  // 初始化 Audio 元素并挂载到 DOM
+  useEffect(() => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+      audioRef.current.preload = 'auto';
+      audioRef.current.id = 'global-audio';
+      audioRef.current.style.display = 'none';
+      document.body.appendChild(audioRef.current);
+    }
+
+    const audio = audioRef.current;
+
+    const onEnded = () => {
+      const state = useAppStore.getState();
+
+      if (state.isPlayAllActive && state.songs.length > 0) {
+        const currentIdx = state.songs.findIndex(
+          (s) => s.key === state.currentSong?.key
+        );
+        if (currentIdx >= 0) {
+          const nextIdx = currentIdx + 1;
+          if (nextIdx < state.songs.length) {
+            // 播放下一首
+            playRef.current?.(state.songs[nextIdx]);
+            return;
+          } else if (state.isLoopMode) {
+            // 循环模式：回到第一首
+            playRef.current?.(state.songs[0]);
+            return;
+          }
+        }
+        // 全部播放完毕，退出播放全部模式
+        state.setPlayAllActive(false);
+      }
+
+      store.setIsPlaying(false);
+    };
+
+    audio.addEventListener('ended', onEnded);
+
+    return () => {
+      audio.removeEventListener('ended', onEnded);
+    };
   }, [store]);
 
   /** 暂停 */
@@ -174,6 +212,37 @@ export function useAudioPlayer() {
     }
   }, [pause, resume]);
 
+  /** 播放全部 */
+  const playAll = useCallback(() => {
+    const state = useAppStore.getState();
+    const songs = state.songs;
+    if (songs.length === 0) return;
+    state.setPlayAllActive(true);
+    play(songs[0]);
+  }, [play]);
+
+  /** 播放上一首 */
+  const playPrev = useCallback(() => {
+    const state = useAppStore.getState();
+    const { songs, currentSong } = state;
+    if (songs.length === 0 || !currentSong) return;
+    const currentIdx = songs.findIndex((s) => s.key === currentSong.key);
+    if (currentIdx <= 0) return;
+    const prevSong = songs[currentIdx - 1];
+    play(prevSong);
+  }, [play]);
+
+  /** 播放下一首 */
+  const playNext = useCallback(() => {
+    const state = useAppStore.getState();
+    const { songs, currentSong } = state;
+    if (songs.length === 0 || !currentSong) return;
+    const currentIdx = songs.findIndex((s) => s.key === currentSong.key);
+    if (currentIdx < 0 || currentIdx >= songs.length - 1) return;
+    const nextSong = songs[currentIdx + 1];
+    play(nextSong);
+  }, [play]);
+
   /** 跳转到指定时间 */
   const seek = useCallback((time: number) => {
     const audio = audioRef.current;
@@ -204,6 +273,9 @@ export function useAudioPlayer() {
     pause,
     resume,
     togglePlay,
+    playAll,
+    playPrev,
+    playNext,
     seek,
     setVolume,
     revokeUrl,

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- 头梁弧线 -->
+  <path d="M16 40 C16 20, 48 20, 48 40" stroke="#1677ff" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <!-- 左耳罩 -->
+  <rect x="10" y="36" width="12" height="18" rx="6" fill="#1677ff"/>
+  <!-- 右耳罩 -->
+  <rect x="42" y="36" width="12" height="18" rx="6" fill="#1677ff"/>
+  <!-- 头梁顶部连接 -->
+  <circle cx="32" cy="28" r="2" fill="#1677ff"/>
+</svg>
