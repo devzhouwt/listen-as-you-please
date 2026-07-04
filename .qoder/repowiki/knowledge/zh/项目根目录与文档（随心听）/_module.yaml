@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: ""
+title: 项目根目录与文档（随心听）
+scope:
+    - README.md
+    - README.en.md
+    - 随心听-需求文档.docx
+source_files: []
+depends_on: []
+related_to: []

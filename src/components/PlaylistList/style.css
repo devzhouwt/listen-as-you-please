@@ -1,0 +1,122 @@
+.playlist-view {
+  padding: 24px 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.playlist-header {
+  margin-bottom: 24px;
+}
+
+.back-btn {
+  cursor: pointer;
+  color: #1677ff;
+  font-size: 14px;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.back-btn:hover {
+  color: #4096ff;
+}
+
+.playlist-card {
+  text-align: center;
+}
+
+.playlist-card-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.playlist-folder-icon {
+  font-size: 48px;
+  color: #1677ff;
+}
+
+.playlist-name {
+  font-size: 14px;
+  max-width: 100%;
+}
+
+.song-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.song-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+}
+
+.song-item:hover {
+  background-color: #f5f5f5;
+}
+
+.song-item-active {
+  background-color: #e6f4ff;
+  border-color: #91caff;
+}
+
+.song-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.song-item-name {
+  font-size: 15px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.song-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #999;
+}
+
+.song-format-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f0f0f0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+}
+
+.song-size {
+  color: #bbb;
+}
+
+.song-item-action {
+  font-size: 18px;
+  color: #1677ff;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+}
