@@ -3,5 +3,9 @@ dist/
 .DS_Store
 *.local
 2026/
+# 歌单目录下的测试音频（大文件不纳入版本管理）
+歌单/2026/
+# Qoder IDE 配置（IDE 专属元数据）
+.qoder/
 tsconfig.tsbuildinfo
 *.tsbuildinfo
