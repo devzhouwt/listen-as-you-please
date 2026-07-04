@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, Form, Input, Button, message, Space, Typography, Alert } from 'antd';
 import {
   CustomerServiceOutlined,
@@ -22,6 +22,15 @@ const RepoConfig: React.FC = () => {
   const clearRepoConfig = useAppStore((s) => s.clearRepoConfig);
   const closeConfig = useAppStore((s) => s.closeConfig);
   const repoConfig = useAppStore((s) => s.repoConfig);
+
+  // 有已保存配置时视为"切换仓库"模式：预填 owner/repo 但不显示已有 token
+  const isSwitchMode = !!repoConfig;
+  const formInitialValues = useMemo(() => {
+    if (isSwitchMode) {
+      return { owner: repoConfig!.owner, repo: repoConfig!.repo, token: '' };
+    }
+    return { owner: '', repo: '', token: '' };
+  }, [isSwitchMode]);
 
   const handleSave = async (values: RepoConfig) => {
     setLoading(true);
@@ -67,7 +76,7 @@ const RepoConfig: React.FC = () => {
           form={form}
           layout="vertical"
           onFinish={handleSave}
-          initialValues={repoConfig || { owner: '', repo: '', token: '' }}
+          initialValues={formInitialValues}
         >
           <Form.Item
             name="owner"
