@@ -1,9 +1,10 @@
 import React, { useEffect, useCallback } from 'react';
 import { ConfigProvider, Layout, Button, Space, theme } from 'antd';
 import { LogoutOutlined } from '@ant-design/icons';
-import { HashRouter } from 'react-router-dom';
+import { HashRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import RepoConfig from '@/components/RepoConfig';
 import PlaylistList from '@/components/PlaylistList';
+import PlaylistDetail from '@/components/PlaylistDetail';
 import PlayerBar from '@/components/PlayerBar';
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import { useAppStore } from '@/store';
@@ -17,9 +18,8 @@ const AppContent: React.FC = () => {
   const repoConfig = useAppStore((s) => s.repoConfig);
   const showConfig = useAppStore((s) => s.showConfig);
   const openConfig = useAppStore((s) => s.openConfig);
-  const setCurrentPlaylist = useAppStore((s) => s.setCurrentPlaylist);
-  const setSongs = useAppStore((s) => s.setSongs);
   const setCacheSize = useAppStore((s) => s.setCacheSize);
+  const navigate = useNavigate();
   
   const { play, pause, resume, playAll, playPrev, playNext, togglePlay, seek } = useAudioPlayer();
 
@@ -66,7 +66,7 @@ const AppContent: React.FC = () => {
     <Layout className="app-layout">
       {isPlaylistView && (
         <Header className="app-header">
-          <div className="header-title" onClick={() => { setCurrentPlaylist(null); setSongs([]); }} style={{ cursor: 'pointer' }}>随心听</div>
+          <div className="header-title" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>随心听</div>
           <Space>
             <Button
               type="text"
@@ -83,7 +83,10 @@ const AppContent: React.FC = () => {
         {showConfig ? (
           <RepoConfig />
         ) : (
-          <PlaylistList onPlay={play} onPlayAll={playAll} />
+          <Routes>
+            <Route path="/playlist/:name" element={<PlaylistDetail onPlay={play} onPlayAll={playAll} />} />
+            <Route path="/" element={<PlaylistList onPlay={play} onPlayAll={playAll} />} />
+          </Routes>
         )}
       </Content>
       {isPlaylistView && (
