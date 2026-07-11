@@ -1,0 +1,96 @@
+.pwa-install-prompt {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  max-width: 400px;
+  width: 90%;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateX(-50%) translateY(100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+.pwa-install-content {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 20px;
+}
+
+.pwa-install-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.pwa-icon {
+  font-size: 32px;
+}
+
+.pwa-install-header h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 18px;
+  color: #333;
+}
+
+.pwa-close-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.pwa-install-desc {
+  margin: 12px 0;
+  color: #666;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.pwa-install-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.pwa-install-btn {
+  flex: 1;
+  background: #1DB954;
+  border-color: #1DB954;
+}
+
+.pwa-install-btn:hover {
+  background: #1ed760;
+  border-color: #1ed760;
+}
+
+.pwa-dismiss-btn {
+  flex: 1;
+}
+
+@media (max-width: 480px) {
+  .pwa-install-prompt {
+    bottom: 10px;
+    width: 95%;
+  }
+
+  .pwa-install-content {
+    padding: 16px;
+  }
+
+  .pwa-install-header h3 {
+    font-size: 16px;
+  }
+}

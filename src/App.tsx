@@ -5,6 +5,7 @@ import { HashRouter } from 'react-router-dom';
 import RepoConfig from '@/components/RepoConfig';
 import PlaylistList from '@/components/PlaylistList';
 import PlayerBar from '@/components/PlayerBar';
+import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import { useAppStore } from '@/store';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { getTotalSize } from '@/cache/audioCache';
@@ -93,6 +94,7 @@ const AppContent: React.FC = () => {
           onNext={playNext}
         />
       )}
+      <PWAInstallPrompt />
     </Layout>
   );
 };
