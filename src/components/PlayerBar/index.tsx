@@ -42,20 +42,52 @@ const PlayerBar: React.FC<PlayerBarProps> = ({ onTogglePlay, onSeek, onPrev, onN
     const audio = getAudio();
     if (!audio) return;
 
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const onDurationChange = () => setDuration(audio.duration || 0);
-    const onEnded = () => setCurrentTime(audio.duration || 0);
+    const onTimeUpdate = () => {
+      // 确保 currentTime 不会超过 duration
+      const currentTime = audio.currentTime;
+      const duration = audio.duration || 0;
+      setCurrentTime(isNaN(currentTime) ? 0 : Math.min(currentTime, duration));
+    };
+    
+    const onDurationChange = () => {
+      const duration = audio.duration || 0;
+      setDuration(isNaN(duration) ? 0 : duration);
+    };
+    
+    const onEnded = () => {
+      const duration = audio.duration || 0;
+      setCurrentTime(isNaN(duration) ? 0 : duration);
+    };
+    
+    const onLoadedMetadata = () => {
+      // 确保元数据加载后更新 duration
+      const duration = audio.duration || 0;
+      setDuration(isNaN(duration) ? 0 : duration);
+    };
 
+    // 先移除可能存在的旧监听器，避免重复绑定
+    audio.removeEventListener('timeupdate', onTimeUpdate);
+    audio.removeEventListener('durationchange', onDurationChange);
+    audio.removeEventListener('ended', onEnded);
+    audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+    
+    // 添加新监听器
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('durationchange', onDurationChange);
     audio.addEventListener('ended', onEnded);
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
+
+    // 初始化时设置一次当前值
+    setCurrentTime(isNaN(audio.currentTime) ? 0 : audio.currentTime);
+    setDuration(isNaN(audio.duration) ? 0 : (audio.duration || 0));
 
     return () => {
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('durationchange', onDurationChange);
       audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
     };
-  }, []);
+  }, [currentSong]); // 依赖 currentSong，确保在歌曲切换时重新绑定事件
 
   // 加载缓存大小
   useEffect(() => {

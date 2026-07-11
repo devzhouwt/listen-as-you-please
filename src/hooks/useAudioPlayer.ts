@@ -89,6 +89,8 @@ export function useAudioPlayer() {
         // 缓存命中
         const url = URL.createObjectURL(cached.blob);
         audio.src = url;
+        // 确保在播放前重置 currentTime
+        audio.currentTime = 0;
         await audio.play();
         store.setIsPlaying(true);
         store.setAudioLoading(false);
@@ -122,6 +124,8 @@ export function useAudioPlayer() {
       // 播放
       const url = URL.createObjectURL(blob);
       audio.src = url;
+      // 确保在播放前重置 currentTime
+      audio.currentTime = 0;
       await audio.play();
       store.setIsPlaying(true);
       store.setAudioLoading(false);
@@ -174,10 +178,28 @@ export function useAudioPlayer() {
       store.setIsPlaying(false);
     };
 
+    const onTimeUpdate = () => {
+      // 确保时间更新事件正常触发
+      if (audio.currentTime > 0 && !isNaN(audio.currentTime)) {
+        // 可以在这里添加调试信息
+      }
+    };
+
+    const onLoadedMetadata = () => {
+      // 元数据加载完成后，确保 duration 正确
+      if (audio.duration && !isNaN(audio.duration)) {
+        // 可以在这里添加调试信息
+      }
+    };
+
     audio.addEventListener('ended', onEnded);
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
 
     return () => {
       audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
     };
   }, [store]);
 
