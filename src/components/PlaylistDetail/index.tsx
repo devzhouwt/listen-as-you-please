@@ -29,7 +29,6 @@ const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ onPlay, onPlayAll }) =>
   const isAudioLoading = useAppStore((s) => s.isAudioLoading);
   const isPlayAllActive = useAppStore((s) => s.isPlayAllActive);
   const isLoopMode = useAppStore((s) => s.isLoopMode);
-  const setPlayAllActive = useAppStore((s) => s.setPlayAllActive);
   const setLoopMode = useAppStore((s) => s.setLoopMode);
   const setSongs = useAppStore((s) => s.setSongs);
   const setCurrentPlaylist = useAppStore((s) => s.setCurrentPlaylist);
@@ -162,7 +161,6 @@ const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ onPlay, onPlayAll }) =>
               key={song.key}
               className={`song-item ${isThisPlaying ? 'song-item-active' : ''}`}
               onClick={() => {
-                setPlayAllActive(false);
                 onPlay(song);
               }}
             >

@@ -7,6 +7,38 @@ import { useAppStore } from '@/store';
 
 let workerInstance: Worker | null = null;
 
+/** 更新 Media Session 元数据（锁屏信息 + 后台播放保活） */
+function updateMediaSession(song: SongInfo | null, isPlaying: boolean) {
+  if (!('mediaSession' in navigator)) return;
+
+  if (!song) {
+    navigator.mediaSession.metadata = null;
+    return;
+  }
+
+  // 设置歌曲元数据（锁屏/通知栏显示）
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: song.name || '未知歌曲',
+    artist: '随心听',
+    album: '我的歌单',
+  });
+
+  // 设置播放状态
+  navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+}
+
+/** 更新 Media Session 位置状态（进度） */
+function updateMediaSessionPosition(audio: HTMLAudioElement) {
+  if (!('mediaSession' in navigator) || !audio.duration || isNaN(audio.duration)) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration: audio.duration,
+      position: audio.currentTime,
+      playbackRate: audio.playbackRate,
+    });
+  } catch { /* 部分浏览器不支持 */ }
+}
+
 /** 获取 Web Worker 单例 */
 function getWorker(): Worker {
   if (!workerInstance) {
@@ -69,6 +101,7 @@ export function useAudioPlayer() {
       audio.pause();
       store.setIsPlaying(false);
       store.setAudioLoading(false);
+      updateMediaSession(song, false);
       return;
     }
 
@@ -94,6 +127,7 @@ export function useAudioPlayer() {
         await audio.play();
         store.setIsPlaying(true);
         store.setAudioLoading(false);
+        updateMediaSession(song, true);
         return;
       }
 
@@ -129,6 +163,7 @@ export function useAudioPlayer() {
       await audio.play();
       store.setIsPlaying(true);
       store.setAudioLoading(false);
+      updateMediaSession(song, true);
     } catch (err: any) {
       store.setAudioLoading(false);
       message.error(`加载失败: ${err?.message || '未知错误'}`);
@@ -155,6 +190,23 @@ export function useAudioPlayer() {
     const onEnded = () => {
       const state = useAppStore.getState();
 
+      // 单曲循环：播放全部未开启时，循环播放当前歌曲
+      if (state.isLoopMode && !state.isPlayAllActive) {
+        if (state.currentSong) {
+          // 重新播放当前歌曲（不触发 play 中的"同一首歌暂停"逻辑）
+          const audio = audioRef.current;
+          if (audio) {
+            audio.currentTime = 0;
+            audio.play().then(() => {
+              state.setIsPlaying(true);
+              updateMediaSession(state.currentSong, true);
+            }).catch(() => {});
+          }
+        }
+        return;
+      }
+
+      // 播放全部模式
       if (state.isPlayAllActive && state.songs.length > 0) {
         const currentIdx = state.songs.findIndex(
           (s) => s.key === state.currentSong?.key
@@ -179,16 +231,16 @@ export function useAudioPlayer() {
     };
 
     const onTimeUpdate = () => {
-      // 确保时间更新事件正常触发
+      // 定期更新 Media Session 进度位置
       if (audio.currentTime > 0 && !isNaN(audio.currentTime)) {
-        // 可以在这里添加调试信息
+        updateMediaSessionPosition(audio);
       }
     };
 
     const onLoadedMetadata = () => {
-      // 元数据加载完成后，确保 duration 正确
+      // 元数据加载完成后，更新 Media Session 位置状态
       if (audio.duration && !isNaN(audio.duration)) {
-        // 可以在这里添加调试信息
+        updateMediaSessionPosition(audio);
       }
     };
 
@@ -196,10 +248,66 @@ export function useAudioPlayer() {
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
 
+    // 注册 Media Session 动作处理器（锁屏/通知栏控制按钮）
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('play', () => {
+        const state = useAppStore.getState();
+        if (state.currentSong && audio.src) {
+          audio.play().then(() => {
+            state.setIsPlaying(true);
+            updateMediaSession(state.currentSong, true);
+          }).catch(() => {});
+        }
+      });
+
+      navigator.mediaSession.setActionHandler('pause', () => {
+        audio.pause();
+        const state = useAppStore.getState();
+        state.setIsPlaying(false);
+        updateMediaSession(state.currentSong, false);
+      });
+
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        const state = useAppStore.getState();
+        const { songs, currentSong } = state;
+        if (songs.length === 0 || !currentSong) return;
+        const currentIdx = songs.findIndex((s) => s.key === currentSong.key);
+        if (currentIdx > 0) {
+          playRef.current?.(songs[currentIdx - 1]);
+        }
+      });
+
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        const state = useAppStore.getState();
+        const { songs, currentSong } = state;
+        if (songs.length === 0 || !currentSong) return;
+        const currentIdx = songs.findIndex((s) => s.key === currentSong.key);
+        if (currentIdx >= 0 && currentIdx < songs.length - 1) {
+          playRef.current?.(songs[currentIdx + 1]);
+        }
+      });
+
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined) {
+          audio.currentTime = details.seekTime;
+          updateMediaSessionPosition(audio);
+        }
+      });
+    }
+
     return () => {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+
+      // 清除 Media Session 动作处理器
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', null);
+        navigator.mediaSession.setActionHandler('pause', null);
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+        navigator.mediaSession.setActionHandler('nexttrack', null);
+        navigator.mediaSession.setActionHandler('seekto', null);
+      }
     };
   }, [store]);
 
@@ -209,6 +317,8 @@ export function useAudioPlayer() {
     if (audio) {
       audio.pause();
       store.setIsPlaying(false);
+      const state = useAppStore.getState();
+      updateMediaSession(state.currentSong, false);
     }
   }, [store]);
 
@@ -217,7 +327,9 @@ export function useAudioPlayer() {
     const audio = audioRef.current;
     if (audio && audio.src) {
       audio.play().then(() => {
+        const state = useAppStore.getState();
         store.setIsPlaying(true);
+        updateMediaSession(state.currentSong, true);
       }).catch(() => {
         // 自动播放被浏览器阻止时静默处理
       });
@@ -234,14 +346,13 @@ export function useAudioPlayer() {
     }
   }, [pause, resume]);
 
-  /** 播放全部 */
+  /** 播放全部（切换）：仅切换模式状态，不改变当前播放状态 */
   const playAll = useCallback(() => {
     const state = useAppStore.getState();
-    const songs = state.songs;
-    if (songs.length === 0) return;
-    state.setPlayAllActive(true);
-    play(songs[0]);
-  }, [play]);
+    if (state.songs.length === 0) return;
+    // 切换播放全部模式
+    state.setPlayAllActive(!state.isPlayAllActive);
+  }, []);
 
   /** 播放上一首 */
   const playPrev = useCallback(() => {
