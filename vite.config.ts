@@ -5,6 +5,9 @@ import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
   base: './',
+  server: {
+    host: true, // 允许局域网访问，方便手机端测试
+  },
   plugins: [
     react(),
     VitePWA({

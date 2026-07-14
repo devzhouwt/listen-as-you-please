@@ -28,6 +28,15 @@ const AppContent: React.FC = () => {
     getTotalSize().then(setCacheSize).catch(() => {});
   }, []);
 
+  // 浏览器原生防退出拦截
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   // 空格键控制播放/暂停
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

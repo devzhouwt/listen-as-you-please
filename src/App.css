@@ -37,5 +37,5 @@
 }
 
 .app-content.with-player {
-  min-height: calc(100vh - 56px - 64px);
+  min-height: calc(100vh - 56px - 80px);
 }

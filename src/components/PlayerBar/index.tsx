@@ -124,6 +124,21 @@ const PlayerBar: React.FC<PlayerBarProps> = ({ onTogglePlay, onSeek, onPrev, onN
 
   return (
     <div className="player-bar">
+      {/* 进度条行：贯穿全宽 */}
+      <div className="player-progress-row">
+        <span className="player-time">{formatTime(currentTime)}</span>
+        <Slider
+          className="player-progress"
+          min={0}
+          max={duration || 100}
+          value={currentTime}
+          onChange={onSeek}
+          tooltip={{ formatter: formatTime }}
+          disabled={!currentSong}
+        />
+        <span className="player-time">{formatTime(duration)}</span>
+      </div>
+      {/* 下方控制区 */}
       <div className="player-bar-inner">
         {/* 左侧：歌曲信息 */}
         <div className="player-song-info">
@@ -142,42 +157,29 @@ const PlayerBar: React.FC<PlayerBarProps> = ({ onTogglePlay, onSeek, onPrev, onN
           )}
         </div>
 
-        {/* 中间：播放控制 */}
+        {/* 中间：播放控制按钮 */}
         <div className="player-controls">
-          <div className="player-controls-inner">
-            <Button
-              type="text"
-              icon={<StepBackwardOutlined />}
-              onClick={onPrev}
-              disabled={!currentSong || isAudioLoading}
-              className="player-skip-btn"
-            />
-            <Button
-              type="text"
-              icon={isAudioLoading ? <LoadingOutlined /> : (isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />)}
-              onClick={onTogglePlay}
-              disabled={!currentSong || isAudioLoading}
-              className="player-play-btn"
-            />
-            <Button
-              type="text"
-              icon={<StepForwardOutlined />}
-              onClick={onNext}
-              disabled={!currentSong || isAudioLoading}
-              className="player-skip-btn"
-            />
-            <span className="player-time">{formatTime(currentTime)}</span>
-            <Slider
-              className="player-progress"
-              min={0}
-              max={duration || 100}
-              value={currentTime}
-              onChange={onSeek}
-              tooltip={{ formatter: formatTime }}
-              disabled={!currentSong}
-            />
-            <span className="player-time">{formatTime(duration)}</span>
-          </div>
+          <Button
+            type="text"
+            icon={<StepBackwardOutlined />}
+            onClick={onPrev}
+            disabled={!currentSong || isAudioLoading}
+            className="player-skip-btn"
+          />
+          <Button
+            type="text"
+            icon={isAudioLoading ? <LoadingOutlined /> : (isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />)}
+            onClick={onTogglePlay}
+            disabled={!currentSong || isAudioLoading}
+            className="player-play-btn"
+          />
+          <Button
+            type="text"
+            icon={<StepForwardOutlined />}
+            onClick={onNext}
+            disabled={!currentSong || isAudioLoading}
+            className="player-skip-btn"
+          />
         </div>
 
         {/* 右侧：缓存管理 */}

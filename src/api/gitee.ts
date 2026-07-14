@@ -49,10 +49,11 @@ export async function fetchContents(
   api: AxiosInstance,
   owner: string,
   repo: string,
-  path: string = ''
+  path: string = '',
+  signal?: AbortSignal
 ): Promise<GiteeFileItem[]> {
   const url = `/repos/${owner}/${repo}/contents/${path}`;
-  const response = await api.get<GiteeFileItem[] | GiteeFileContentResponse>(url);
+  const response = await api.get<GiteeFileItem[] | GiteeFileContentResponse>(url, { signal });
   
   if (Array.isArray(response.data)) {
     return response.data;
