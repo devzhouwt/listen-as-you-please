@@ -6,6 +6,28 @@ import { getCacheKey, getCacheItem, setCacheItem } from '@/cache/audioCache';
 import { useAppStore } from '@/store';
 
 let workerInstance: Worker | null = null;
+let audioContext: AudioContext | null = null;
+
+/** 获取 AudioContext 单例（用于后台播放保活） */
+function getAudioContext(): AudioContext | null {
+  try {
+    if (!audioContext) {
+      const Ctor = (window.AudioContext || (window as any).webkitAudioContext);
+      if (Ctor) audioContext = new Ctor();
+    }
+    return audioContext;
+  } catch {
+    return null;
+  }
+}
+
+/** 确保 AudioContext 处于运行状态 */
+function resumeAudioContext() {
+  const ctx = getAudioContext();
+  if (ctx && ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+}
 
 /** 更新 Media Session 元数据（锁屏信息 + 后台播放保活） */
 function updateMediaSession(song: SongInfo | null, isPlaying: boolean) {
@@ -82,6 +104,39 @@ export function useAudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const store = useAppStore();
   const playRef = useRef<((song: SongInfo) => Promise<void>) | null>(null);
+  // 预加载状态：存储下一首的歌曲信息和已准备好的 Blob URL
+  const preloadedRef = useRef<{ song: SongInfo; blobUrl: string } | null>(null);
+
+  /** 滚动式预加载：在当前歌曲播放时，提前准备下一首的音频数据 */
+  const preloadNextSong = useCallback(async (currentSong: SongInfo) => {
+    const state = useAppStore.getState();
+    let nextSong: SongInfo | null = null;
+
+    if (state.isPlayAllActive && state.songs.length > 0) {
+      const currentIdx = state.songs.findIndex((s) => s.key === currentSong.key);
+      if (currentIdx >= 0) {
+        const nextIdx = currentIdx + 1;
+        if (nextIdx < state.songs.length) {
+          nextSong = state.songs[nextIdx];
+        } else if (state.isLoopMode) {
+          nextSong = state.songs[0];
+        }
+      }
+    }
+
+    if (!nextSong) return;
+
+    try {
+      const cacheKey = getCacheKey(nextSong.key);
+      const cached = await getCacheItem(cacheKey);
+      if (cached) {
+        const blobUrl = URL.createObjectURL(cached.blob);
+        preloadedRef.current = { song: nextSong, blobUrl };
+      }
+    } catch {
+      // 预加载失败不影响正常播放
+    }
+  }, []);
 
   /** 播放指定歌曲 */
   const play = useCallback(async (song: SongInfo) => {
@@ -120,6 +175,7 @@ export function useAudioPlayer() {
 
       if (cached) {
         // 缓存命中
+        resumeAudioContext();
         const url = URL.createObjectURL(cached.blob);
         audio.src = url;
         // 确保在播放前重置 currentTime
@@ -128,6 +184,8 @@ export function useAudioPlayer() {
         store.setIsPlaying(true);
         store.setAudioLoading(false);
         updateMediaSession(song, true);
+        // 触发滚动式预加载
+        preloadNextSong(song);
         return;
       }
 
@@ -156,6 +214,7 @@ export function useAudioPlayer() {
       });
 
       // 播放
+      resumeAudioContext();
       const url = URL.createObjectURL(blob);
       audio.src = url;
       // 确保在播放前重置 currentTime
@@ -164,6 +223,8 @@ export function useAudioPlayer() {
       store.setIsPlaying(true);
       store.setAudioLoading(false);
       updateMediaSession(song, true);
+      // 触发滚动式预加载
+      preloadNextSong(song);
     } catch (err: any) {
       store.setAudioLoading(false);
       message.error(`加载失败: ${err?.message || '未知错误'}`);
@@ -190,12 +251,37 @@ export function useAudioPlayer() {
     const onEnded = () => {
       const state = useAppStore.getState();
 
+      // 优先使用预加载数据切歌（避免后台异步 I/O 被系统节流）
+      const preloaded = preloadedRef.current;
+      preloadedRef.current = null;
+
+      if (preloaded && state.isPlayAllActive) {
+        // 清理上一首的 blob URL
+        if (audio.src.startsWith('blob:')) {
+          URL.revokeObjectURL(audio.src);
+        }
+        store.setCurrentSong(preloaded.song);
+        audio.src = preloaded.blobUrl;
+        audio.currentTime = 0;
+        resumeAudioContext();
+        audio.play().then(() => {
+          store.setIsPlaying(true);
+          updateMediaSession(preloaded.song, true);
+          // 继续滚动预加载下一首
+          preloadNextSong(preloaded.song);
+        }).catch(() => {
+          // 播放失败时回退到正常加载
+          playRef.current?.(preloaded.song);
+        });
+        return;
+      }
+
       // 单曲循环：播放全部未开启时，循环播放当前歌曲
       if (state.isLoopMode && !state.isPlayAllActive) {
         if (state.currentSong) {
-          // 重新播放当前歌曲（不触发 play 中的"同一首歌暂停"逻辑）
           const audio = audioRef.current;
           if (audio) {
+            resumeAudioContext();
             audio.currentTime = 0;
             audio.play().then(() => {
               state.setIsPlaying(true);
@@ -206,7 +292,7 @@ export function useAudioPlayer() {
         return;
       }
 
-      // 播放全部模式
+      // 播放全部模式（预加载未命中时的回退路径）
       if (state.isPlayAllActive && state.songs.length > 0) {
         const currentIdx = state.songs.findIndex(
           (s) => s.key === state.currentSong?.key
@@ -214,16 +300,13 @@ export function useAudioPlayer() {
         if (currentIdx >= 0) {
           const nextIdx = currentIdx + 1;
           if (nextIdx < state.songs.length) {
-            // 播放下一首
             playRef.current?.(state.songs[nextIdx]);
             return;
           } else if (state.isLoopMode) {
-            // 循环模式：回到第一首
             playRef.current?.(state.songs[0]);
             return;
           }
         }
-        // 全部播放完毕，退出播放全部模式
         state.setPlayAllActive(false);
       }
 
@@ -247,6 +330,28 @@ export function useAudioPlayer() {
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
+
+    // 初始化 AudioContext 并连接音频元素（后台播放保活）
+    const ctx = getAudioContext();
+    if (ctx) {
+      try {
+        const source = ctx.createMediaElementSource(audio);
+        source.connect(ctx.destination);
+      } catch {
+        // 部分浏览器可能不支持或已连接
+      }
+    }
+
+    // 页面重新可见时恢复 AudioContext（移动端浏览器会在后台挂起它）
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const state = useAppStore.getState();
+        if (state.isPlaying) {
+          resumeAudioContext();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // 注册 Media Session 动作处理器（锁屏/通知栏控制按钮）
     if ('mediaSession' in navigator) {
@@ -299,6 +404,19 @@ export function useAudioPlayer() {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+
+      // 清理预加载资源
+      if (preloadedRef.current) {
+        URL.revokeObjectURL(preloadedRef.current.blobUrl);
+        preloadedRef.current = null;
+      }
+
+      // 关闭 AudioContext
+      if (audioContext) {
+        audioContext.close().catch(() => {});
+        audioContext = null;
+      }
 
       // 清除 Media Session 动作处理器
       if ('mediaSession' in navigator) {
