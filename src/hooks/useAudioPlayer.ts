@@ -6,51 +6,11 @@ import { getCacheKey, getCacheItem, setCacheItem } from '@/cache/audioCache';
 import { useAppStore } from '@/store';
 
 let workerInstance: Worker | null = null;
-let audioContext: AudioContext | null = null;
-let keepAliveNode: OscillatorNode | null = null;
 
-/** 获取 AudioContext 单例（仅用于后台播放保活，不接入播放用的 audio 元素） */
-function getAudioContext(): AudioContext | null {
-  try {
-    if (!audioContext) {
-      const Ctor = (window.AudioContext || (window as any).webkitAudioContext);
-      if (Ctor) audioContext = new Ctor();
-    }
-    return audioContext;
-  } catch {
-    return null;
-  }
-}
-
-/** 确保 AudioContext 处于运行状态 */
-function resumeAudioContext() {
-  const ctx = getAudioContext();
-  if (ctx && ctx.state === 'suspended') {
-    ctx.resume().catch(() => {});
-  }
-}
-
-/**
- * 启动静音保活音源：用一个增益为 0 的振荡器持续占用音频渲染，
- * 促使移动端浏览器在息屏/后台时保持页面音频会话活跃。
- * 关键：它完全独立于播放用的 <audio> 元素，即使自身被系统挂起也不会
- * 闸断歌曲播放（这正是此前 createMediaElementSource 方案导致卡死的根因）。
- */
-function startKeepAlive() {
-  const ctx = getAudioContext();
-  if (!ctx || keepAliveNode) return;
-  try {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    gain.gain.value = 0; // 完全静音
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    keepAliveNode = osc;
-  } catch {
-    // 保活失败不影响正常播放
-  }
-}
+// 说明：后台/息屏的持续播放完全依赖 HTMLAudioElement 本身正在发声 + Media Session
+// 会话（移动端 PWA 音乐播放器的标准做法）。此前用 Web Audio（createMediaElementSource
+// 路由 / 静音振荡器保活）既无法真正保活（gain=0 不发声），又会在系统挂起 AudioContext
+// 后把歌曲一起冻死，故彻底移除，不再引入 AudioContext。
 
 /** 更新 Media Session 元数据（锁屏信息 + 后台播放保活） */
 function updateMediaSession(song: SongInfo | null, isPlaying: boolean) {
@@ -166,11 +126,6 @@ export function useAudioPlayer() {
     const audio = audioRef.current;
     if (!audio) return;
 
-    // 在用户手势内优先恢复并启动静音保活音源：
-    // 此时（首次点击）创建的 AudioContext 会直接处于 running 状态，避免因异步 await 打断手势激活窗口而无法 resume。
-    resumeAudioContext();
-    startKeepAlive();
-
     const config = useAppStore.getState().repoConfig;
     if (!config) {
       message.error('请先配置仓库信息');
@@ -203,7 +158,6 @@ export function useAudioPlayer() {
 
       if (cached) {
         // 缓存命中
-        resumeAudioContext();
         const url = URL.createObjectURL(cached.blob);
         audio.src = url;
         // 确保在播放前重置 currentTime
@@ -242,7 +196,6 @@ export function useAudioPlayer() {
       });
 
       // 播放
-      resumeAudioContext();
       const url = URL.createObjectURL(blob);
       audio.src = url;
       // 确保在播放前重置 currentTime
@@ -291,7 +244,6 @@ export function useAudioPlayer() {
         store.setCurrentSong(preloaded.song);
         audio.src = preloaded.blobUrl;
         audio.currentTime = 0;
-        resumeAudioContext();
         audio.play().then(() => {
           store.setIsPlaying(true);
           updateMediaSession(preloaded.song, true);
@@ -309,7 +261,6 @@ export function useAudioPlayer() {
         if (state.currentSong) {
           const audio = audioRef.current;
           if (audio) {
-            resumeAudioContext();
             audio.currentTime = 0;
             audio.play().then(() => {
               state.setIsPlaying(true);
@@ -359,23 +310,11 @@ export function useAudioPlayer() {
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
 
-    // 页面重新可见时恢复 AudioContext（移动端浏览器会在后台挂起它）
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        const state = useAppStore.getState();
-        if (state.isPlaying) {
-          resumeAudioContext();
-        }
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
     // 注册 Media Session 动作处理器（锁屏/通知栏控制按钮）
     if ('mediaSession' in navigator) {
       navigator.mediaSession.setActionHandler('play', () => {
         const state = useAppStore.getState();
         if (state.currentSong && audio.src) {
-          resumeAudioContext();
           audio.play().then(() => {
             state.setIsPlaying(true);
             updateMediaSession(state.currentSong, true);
@@ -426,22 +365,11 @@ export function useAudioPlayer() {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
 
       // 清理预加载资源
       if (preloadedRef.current) {
         URL.revokeObjectURL(preloadedRef.current.blobUrl);
         preloadedRef.current = null;
-      }
-
-      // 停止保活音源并关闭 AudioContext
-      if (keepAliveNode) {
-        try { keepAliveNode.stop(); } catch { /* 已停止 */ }
-        keepAliveNode = null;
-      }
-      if (audioContext) {
-        audioContext.close().catch(() => {});
-        audioContext = null;
       }
 
       // 清除 Media Session 动作处理器
@@ -453,7 +381,11 @@ export function useAudioPlayer() {
         navigator.mediaSession.setActionHandler('seekto', null);
       }
     };
-  }, [store]);
+    // 仅在挂载时初始化一次：避免因订阅整个 store，导致每次状态变更（切歌/播放暂停/加载）
+    // 都销毁并重建事件监听 / Media Session / 预加载资源——那正是后台切到第 3 首卡在 00:00 的根因。
+    // 注意：zustand 的 setter 引用是稳定的，闭包捕获一次即可长期使用；读取一律走 getState()。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** 暂停 */
   const pause = useCallback(() => {
@@ -470,7 +402,6 @@ export function useAudioPlayer() {
   const resume = useCallback(() => {
     const audio = audioRef.current;
     if (audio && audio.src) {
-      resumeAudioContext();
       audio.play().then(() => {
         const state = useAppStore.getState();
         store.setIsPlaying(true);
