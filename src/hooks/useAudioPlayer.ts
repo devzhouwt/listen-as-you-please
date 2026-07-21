@@ -7,8 +7,9 @@ import { useAppStore } from '@/store';
 
 let workerInstance: Worker | null = null;
 let audioContext: AudioContext | null = null;
+let keepAliveNode: OscillatorNode | null = null;
 
-/** 获取 AudioContext 单例（用于后台播放保活） */
+/** 获取 AudioContext 单例（仅用于后台播放保活，不接入播放用的 audio 元素） */
 function getAudioContext(): AudioContext | null {
   try {
     if (!audioContext) {
@@ -26,6 +27,28 @@ function resumeAudioContext() {
   const ctx = getAudioContext();
   if (ctx && ctx.state === 'suspended') {
     ctx.resume().catch(() => {});
+  }
+}
+
+/**
+ * 启动静音保活音源：用一个增益为 0 的振荡器持续占用音频渲染，
+ * 促使移动端浏览器在息屏/后台时保持页面音频会话活跃。
+ * 关键：它完全独立于播放用的 <audio> 元素，即使自身被系统挂起也不会
+ * 闸断歌曲播放（这正是此前 createMediaElementSource 方案导致卡死的根因）。
+ */
+function startKeepAlive() {
+  const ctx = getAudioContext();
+  if (!ctx || keepAliveNode) return;
+  try {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    gain.gain.value = 0; // 完全静音
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    keepAliveNode = osc;
+  } catch {
+    // 保活失败不影响正常播放
   }
 }
 
@@ -142,6 +165,11 @@ export function useAudioPlayer() {
   const play = useCallback(async (song: SongInfo) => {
     const audio = audioRef.current;
     if (!audio) return;
+
+    // 在用户手势内优先恢复并启动静音保活音源：
+    // 此时（首次点击）创建的 AudioContext 会直接处于 running 状态，避免因异步 await 打断手势激活窗口而无法 resume。
+    resumeAudioContext();
+    startKeepAlive();
 
     const config = useAppStore.getState().repoConfig;
     if (!config) {
@@ -331,17 +359,6 @@ export function useAudioPlayer() {
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
 
-    // 初始化 AudioContext 并连接音频元素（后台播放保活）
-    const ctx = getAudioContext();
-    if (ctx) {
-      try {
-        const source = ctx.createMediaElementSource(audio);
-        source.connect(ctx.destination);
-      } catch {
-        // 部分浏览器可能不支持或已连接
-      }
-    }
-
     // 页面重新可见时恢复 AudioContext（移动端浏览器会在后台挂起它）
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -358,6 +375,7 @@ export function useAudioPlayer() {
       navigator.mediaSession.setActionHandler('play', () => {
         const state = useAppStore.getState();
         if (state.currentSong && audio.src) {
+          resumeAudioContext();
           audio.play().then(() => {
             state.setIsPlaying(true);
             updateMediaSession(state.currentSong, true);
@@ -384,12 +402,16 @@ export function useAudioPlayer() {
 
       navigator.mediaSession.setActionHandler('nexttrack', () => {
         const state = useAppStore.getState();
-        const { songs, currentSong } = state;
+        const { songs, currentSong, isLoopMode } = state;
         if (songs.length === 0 || !currentSong) return;
         const currentIdx = songs.findIndex((s) => s.key === currentSong.key);
-        if (currentIdx >= 0 && currentIdx < songs.length - 1) {
-          playRef.current?.(songs[currentIdx + 1]);
+        if (currentIdx < 0) return;
+        let nextIdx = currentIdx + 1;
+        if (nextIdx >= songs.length) {
+          if (!isLoopMode) return; // 未开循环且已是最后一首 → 不动
+          nextIdx = 0;             // 开循环 → 回到第一首
         }
+        playRef.current?.(songs[nextIdx]);
       });
 
       navigator.mediaSession.setActionHandler('seekto', (details) => {
@@ -412,7 +434,11 @@ export function useAudioPlayer() {
         preloadedRef.current = null;
       }
 
-      // 关闭 AudioContext
+      // 停止保活音源并关闭 AudioContext
+      if (keepAliveNode) {
+        try { keepAliveNode.stop(); } catch { /* 已停止 */ }
+        keepAliveNode = null;
+      }
       if (audioContext) {
         audioContext.close().catch(() => {});
         audioContext = null;
@@ -444,6 +470,7 @@ export function useAudioPlayer() {
   const resume = useCallback(() => {
     const audio = audioRef.current;
     if (audio && audio.src) {
+      resumeAudioContext();
       audio.play().then(() => {
         const state = useAppStore.getState();
         store.setIsPlaying(true);
@@ -483,15 +510,19 @@ export function useAudioPlayer() {
     play(prevSong);
   }, [play]);
 
-  /** 播放下一首 */
+  /** 播放下一首（循环模式下最后一首回绕到第一首） */
   const playNext = useCallback(() => {
     const state = useAppStore.getState();
-    const { songs, currentSong } = state;
+    const { songs, currentSong, isLoopMode } = state;
     if (songs.length === 0 || !currentSong) return;
     const currentIdx = songs.findIndex((s) => s.key === currentSong.key);
-    if (currentIdx < 0 || currentIdx >= songs.length - 1) return;
-    const nextSong = songs[currentIdx + 1];
-    play(nextSong);
+    if (currentIdx < 0) return;
+    let nextIdx = currentIdx + 1;
+    if (nextIdx >= songs.length) {
+      if (!isLoopMode) return; // 未开循环且已是最后一首 → 不动
+      nextIdx = 0;             // 开循环 → 回到第一首
+    }
+    play(songs[nextIdx]);
   }, [play]);
 
   /** 跳转到指定时间 */
