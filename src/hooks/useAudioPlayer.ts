@@ -12,6 +12,13 @@ let workerInstance: Worker | null = null;
 // 路由 / 静音振荡器保活）既无法真正保活（gain=0 不发声），又会在系统挂起 AudioContext
 // 后把歌曲一起冻死，故彻底移除，不再引入 AudioContext。
 
+// ===== 批量预加载状态（模块级，跨渲染周期持久化） =====
+// 预加载将即将播放的歌曲 blob URL 提前存入内存，使 onEnded 切歌走同步路径，
+// 避免后台/息屏时异步 I/O（IndexedDB 读取 / 网络下载）被 Android 系统冻结。
+const preloadedMap = new Map<string, { song: SongInfo; blobUrl: string }>();
+let preloadInProgress = false;
+let preloadAbortCtrl: AbortController | null = null;
+
 /** 更新 Media Session 元数据（锁屏信息 + 后台播放保活） */
 function updateMediaSession(song: SongInfo | null, isPlaying: boolean) {
   if (!('mediaSession' in navigator)) return;
@@ -87,37 +94,86 @@ export function useAudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const store = useAppStore();
   const playRef = useRef<((song: SongInfo) => Promise<void>) | null>(null);
-  // 预加载状态：存储下一首的歌曲信息和已准备好的 Blob URL
-  const preloadedRef = useRef<{ song: SongInfo; blobUrl: string } | null>(null);
-
-  /** 滚动式预加载：在当前歌曲播放时，提前准备下一首的音频数据 */
-  const preloadNextSong = useCallback(async (currentSong: SongInfo) => {
-    const state = useAppStore.getState();
-    let nextSong: SongInfo | null = null;
-
-    if (state.isPlayAllActive && state.songs.length > 0) {
-      const currentIdx = state.songs.findIndex((s) => s.key === currentSong.key);
-      if (currentIdx >= 0) {
-        const nextIdx = currentIdx + 1;
-        if (nextIdx < state.songs.length) {
-          nextSong = state.songs[nextIdx];
-        } else if (state.isLoopMode) {
-          nextSong = state.songs[0];
-        }
-      }
-    }
-
-    if (!nextSong) return;
+  /**
+   * 积极批量预加载：在当前歌曲播放期间，提前把后续最多 PRELOAD_COUNT 首歌
+   * 的 blob URL 准备好存入内存（preloadedMap）。
+   *
+   * - 已缓存歌曲：从 IndexedDB 读取 blob，创建 URL
+   * - 未缓存歌曲：从远程仓库下载 → 写入缓存 → 创建 URL
+   *
+   * 核心目标：确保 onEnded 切歌时能直接命中内存中的 blob URL，
+   * 走纯同步路径（设 src + play），不触发任何异步 I/O。
+   * 在后台/息屏状态下，Android 会深度冻结非活跃 tab 的异步任务，
+   * 但音频正在播放时网络和 I/O 仍可正常运行，因此必须趁此窗口完成预加载。
+   */
+  const preloadUpcomingSongs = useCallback(async (currentSong: SongInfo) => {
+    if (preloadInProgress) return;
+    preloadInProgress = true;
 
     try {
-      const cacheKey = getCacheKey(nextSong.key);
-      const cached = await getCacheItem(cacheKey);
-      if (cached) {
-        const blobUrl = URL.createObjectURL(cached.blob);
-        preloadedRef.current = { song: nextSong, blobUrl };
+      const state = useAppStore.getState();
+      if (!state.isPlayAllActive || state.songs.length === 0) return;
+
+      const config = state.repoConfig;
+      if (!config) return;
+
+      const PRELOAD_COUNT = 5;
+      const currentIdx = state.songs.findIndex((s) => s.key === currentSong.key);
+      if (currentIdx < 0) return;
+
+      // 构建待预加载歌曲列表
+      const songsToPreload: SongInfo[] = [];
+      for (let i = 1; i <= PRELOAD_COUNT; i++) {
+        let idx = currentIdx + i;
+        if (idx >= state.songs.length) {
+          if (state.isLoopMode) {
+            idx = idx % state.songs.length;
+          } else {
+            break;
+          }
+        }
+        const s = state.songs[idx];
+        if (!s || preloadedMap.has(s.key)) continue;
+        songsToPreload.push(s);
       }
-    } catch {
-      // 预加载失败不影响正常播放
+
+      const api = createApi(config.token);
+
+      for (const song of songsToPreload) {
+        if (preloadedMap.has(song.key)) continue;
+
+        try {
+          const cacheKey = getCacheKey(song.key);
+          const cached = await getCacheItem(cacheKey);
+
+          if (cached) {
+            // 缓存命中 → 创建 blob URL
+            const blobUrl = URL.createObjectURL(cached.blob);
+            preloadedMap.set(song.key, { song, blobUrl });
+          } else {
+            // 缓存未命中 → 趁当前歌曲播放期间从网络下载
+            const base64 = await fetchFileBase64(api, config.owner, config.repo, song.path);
+            const arrayBuffer = await decodeBase64(base64);
+
+            const mimeMap: Record<string, string> = {
+              mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg',
+              flac: 'audio/flac', aac: 'audio/aac', m4a: 'audio/mp4',
+            };
+            const mime = mimeMap[song.format] || 'audio/mpeg';
+            const blob = new Blob([arrayBuffer], { type: mime });
+
+            // 写入缓存（不阻塞后续预加载）
+            setCacheItem(cacheKey, blob, song.size).catch(() => {});
+
+            const blobUrl = URL.createObjectURL(blob);
+            preloadedMap.set(song.key, { song, blobUrl });
+          }
+        } catch {
+          // 单首预加载失败不影响后续歌曲
+        }
+      }
+    } finally {
+      preloadInProgress = false;
     }
   }, []);
 
@@ -166,8 +222,8 @@ export function useAudioPlayer() {
         store.setIsPlaying(true);
         store.setAudioLoading(false);
         updateMediaSession(song, true);
-        // 触发滚动式预加载
-        preloadNextSong(song);
+        // 触发批量预加载后续歌曲
+        preloadUpcomingSongs(song);
         return;
       }
 
@@ -204,8 +260,8 @@ export function useAudioPlayer() {
       store.setIsPlaying(true);
       store.setAudioLoading(false);
       updateMediaSession(song, true);
-      // 触发滚动式预加载
-      preloadNextSong(song);
+      // 触发批量预加载后续歌曲
+      preloadUpcomingSongs(song);
     } catch (err: any) {
       store.setAudioLoading(false);
       message.error(`加载失败: ${err?.message || '未知错误'}`);
@@ -232,57 +288,64 @@ export function useAudioPlayer() {
     const onEnded = () => {
       const state = useAppStore.getState();
 
-      // 优先使用预加载数据切歌（避免后台异步 I/O 被系统节流）
-      const preloaded = preloadedRef.current;
-      preloadedRef.current = null;
-
-      if (preloaded && state.isPlayAllActive) {
-        // 清理上一首的 blob URL
-        if (audio.src.startsWith('blob:')) {
-          URL.revokeObjectURL(audio.src);
-        }
-        store.setCurrentSong(preloaded.song);
-        audio.src = preloaded.blobUrl;
-        audio.currentTime = 0;
-        audio.play().then(() => {
-          store.setIsPlaying(true);
-          updateMediaSession(preloaded.song, true);
-          // 继续滚动预加载下一首
-          preloadNextSong(preloaded.song);
-        }).catch(() => {
-          // 播放失败时回退到正常加载
-          playRef.current?.(preloaded.song);
-        });
-        return;
-      }
-
-      // 单曲循环：播放全部未开启时，循环播放当前歌曲
-      if (state.isLoopMode && !state.isPlayAllActive) {
-        if (state.currentSong) {
-          const audio = audioRef.current;
-          if (audio) {
-            audio.currentTime = 0;
-            audio.play().then(() => {
-              state.setIsPlaying(true);
-              updateMediaSession(state.currentSong, true);
-            }).catch(() => {});
-          }
-        }
-        return;
-      }
-
-      // 播放全部模式（预加载未命中时的回退路径）
+      // === 优先从预加载 Map 取下一首的 blob URL（同步路径，不经异步 I/O） ===
       if (state.isPlayAllActive && state.songs.length > 0) {
         const currentIdx = state.songs.findIndex(
           (s) => s.key === state.currentSong?.key
         );
         if (currentIdx >= 0) {
-          const nextIdx = currentIdx + 1;
-          if (nextIdx < state.songs.length) {
+          let nextIdx = currentIdx + 1;
+          if (nextIdx >= state.songs.length) {
+            nextIdx = state.isLoopMode ? 0 : -1;
+          }
+          if (nextIdx >= 0) {
+            const nextSong = state.songs[nextIdx];
+            const preloaded = preloadedMap.get(nextSong.key);
+            if (preloaded) {
+              preloadedMap.delete(nextSong.key);
+              // 释放上一首 blob URL 内存
+              if (audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+              store.setCurrentSong(preloaded.song);
+              audio.src = preloaded.blobUrl;
+              audio.currentTime = 0;
+              audio.play().then(() => {
+                store.setIsPlaying(true);
+                updateMediaSession(preloaded.song, true);
+                preloadUpcomingSongs(preloaded.song);
+              }).catch(() => {
+                // 预加载播放失败，回退到正常加载路径
+                playRef.current?.(preloaded.song);
+              });
+              return;
+            }
+          }
+        }
+      }
+
+      // === 单曲循环（播放全部未开启时） ===
+      if (state.isLoopMode && !state.isPlayAllActive) {
+        if (state.currentSong) {
+          audio.currentTime = 0;
+          audio.play().then(() => {
+            store.setIsPlaying(true);
+            updateMediaSession(state.currentSong, true);
+          }).catch(() => {});
+        }
+        return;
+      }
+
+      // === 播放全部回退路径（预加载未命中） ===
+      if (state.isPlayAllActive && state.songs.length > 0) {
+        const currentIdx = state.songs.findIndex(
+          (s) => s.key === state.currentSong?.key
+        );
+        if (currentIdx >= 0) {
+          let nextIdx = currentIdx + 1;
+          if (nextIdx >= state.songs.length) {
+            nextIdx = state.isLoopMode ? 0 : -1;
+          }
+          if (nextIdx >= 0) {
             playRef.current?.(state.songs[nextIdx]);
-            return;
-          } else if (state.isLoopMode) {
-            playRef.current?.(state.songs[0]);
             return;
           }
         }
@@ -292,10 +355,29 @@ export function useAudioPlayer() {
       store.setIsPlaying(false);
     };
 
+    // 安全网：检测 ended 事件未触发的情况（Android PWA 后台偶发）
+    let playbackStuckSince = 0;
     const onTimeUpdate = () => {
       // 定期更新 Media Session 进度位置
       if (audio.currentTime > 0 && !isNaN(audio.currentTime)) {
         updateMediaSessionPosition(audio);
+      }
+
+      // 检测后台播放卡死：音频在歌曲末尾但未触发 ended 事件
+      const nearEnd = audio.duration > 0 && (audio.duration - audio.currentTime) < 2;
+      if (!audio.paused && audio.currentTime > 0) {
+        if (nearEnd) {
+          if (playbackStuckSince === 0) playbackStuckSince = Date.now();
+          else if (Date.now() - playbackStuckSince > 5000) {
+            // 卡在末尾超过 5 秒，手动触发切歌
+            playbackStuckSince = 0;
+            onEnded();
+          }
+        } else {
+          playbackStuckSince = 0;
+        }
+      } else {
+        playbackStuckSince = 0;
       }
     };
 
@@ -366,10 +448,15 @@ export function useAudioPlayer() {
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
 
-      // 清理预加载资源
-      if (preloadedRef.current) {
-        URL.revokeObjectURL(preloadedRef.current.blobUrl);
-        preloadedRef.current = null;
+      // 清理所有预加载 blob URL
+      for (const entry of preloadedMap.values()) {
+        URL.revokeObjectURL(entry.blobUrl);
+      }
+      preloadedMap.clear();
+      preloadInProgress = false;
+      if (preloadAbortCtrl) {
+        preloadAbortCtrl.abort();
+        preloadAbortCtrl = null;
       }
 
       // 清除 Media Session 动作处理器
