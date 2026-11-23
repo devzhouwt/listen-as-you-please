@@ -67,7 +67,7 @@ const RepoConfig: React.FC = () => {
     <div className="repo-config-container">
       <div className="repo-config-header">
         <Title level={2}>
-          <CustomerServiceOutlined /> 随心听
+          <CustomerServiceOutlined /> 琴渣的自我修养
         </Title>
         <Text type="secondary">将 Gitee 仓库作为个人云端音乐库</Text>
       </div>

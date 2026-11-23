@@ -14,8 +14,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: '随心听 - 在线音乐播放器',
-        short_name: '随心听',
+        name: '琴渣的自我修养 - 在线音乐播放器',
+        short_name: '琴渣的自我修养',
         description: '一个简洁的在线音乐播放器，支持播放列表管理和音频缓存',
         lang: 'zh-CN',
         theme_color: '#1DB954',

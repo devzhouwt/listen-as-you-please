@@ -75,7 +75,7 @@ const AppContent: React.FC = () => {
     <Layout className="app-layout">
       {isPlaylistView && (
         <Header className="app-header">
-          <div className="header-title" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>随心听</div>
+          <div className="header-title" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>琴渣的自我修养</div>
           <Space>
             <Button
               type="text"

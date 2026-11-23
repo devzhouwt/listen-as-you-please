@@ -81,7 +81,7 @@ const PWAInstallPrompt: React.FC = () => {
       <div className="pwa-install-content">
         <div className="pwa-install-header">
           <span className="pwa-icon">🎵</span>
-          <h3>安装随心听</h3>
+          <h3>安装琴渣的自我修养</h3>
           <Button
             type="text"
             icon={<CloseOutlined />}
@@ -90,7 +90,7 @@ const PWAInstallPrompt: React.FC = () => {
           />
         </div>
         <p className="pwa-install-desc">
-          将随心听安装到桌面,享受更好的音乐体验
+          将琴渣的自我修养安装到桌面,享受更好的音乐体验
         </p>
         <div className="pwa-install-actions">
           <Button

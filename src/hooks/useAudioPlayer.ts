@@ -31,7 +31,7 @@ function updateMediaSession(song: SongInfo | null, isPlaying: boolean) {
   // 设置歌曲元数据（锁屏/通知栏显示）
   navigator.mediaSession.metadata = new MediaMetadata({
     title: song.name || '未知歌曲',
-    artist: '随心听',
+    artist: '琴渣的自我修养',
     album: '我的歌单',
   });
 
