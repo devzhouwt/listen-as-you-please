@@ -9,3 +9,5 @@ dist/
 .qoder/
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+.vite-tmp/
+.verify-config.png

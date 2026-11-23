@@ -69,7 +69,15 @@ export function extractPlaylists(items: GiteeFileItem[]): PlaylistInfo[] {
     .map((item) => ({ name: item.name, path: item.path }));
 }
 
-/** 过滤出音频文件（歌曲） */
+/**
+ * 过滤出音频文件（歌曲），并按文件名倒序排列作为展示顺序。
+ *
+ * 为什么在这里排序：
+ * - Gitee 目录接口返回的是按文件名升序的原始顺序，前端此前直接透传；
+ * - 这里按 fileName 降序排一次，展示与播放（播放全部 / 上一首 / 下一首）共用
+ *   同一个 songs 数组，因此顺序一并生效；
+ * - 只是对已拿到的目录数据重新排序，不会增加任何 Gitee 请求。
+ */
 export function extractSongs(items: GiteeFileItem[]): SongInfo[] {
   return items
     .filter((item) => {
@@ -89,7 +97,8 @@ export function extractSongs(items: GiteeFileItem[]): SongInfo[] {
         ext,
         format: getAudioFormat(ext),
       };
-    });
+    })
+    .sort((a, b) => (a.fileName < b.fileName ? 1 : a.fileName > b.fileName ? -1 : 0));
 }
 
 /** 获取文件 Base64 内容 */

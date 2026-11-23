@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, Form, Input, Button, message, Space, Typography, Alert } from 'antd';
 import {
   CustomerServiceOutlined,
@@ -15,6 +15,10 @@ import './style.css';
 
 const { Title, Text, Paragraph } = Typography;
 
+/** 默认仓库信息：进入配置页时自动填好，用户一般只需填写私人令牌 */
+const DEFAULT_OWNER = 'Z-Wait';
+const DEFAULT_REPO = 'listen-as-you-please';
+
 const RepoConfig: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -23,14 +27,19 @@ const RepoConfig: React.FC = () => {
   const closeConfig = useAppStore((s) => s.closeConfig);
   const repoConfig = useAppStore((s) => s.repoConfig);
 
-  // 有已保存配置时视为"切换仓库"模式：预填 owner/repo 但不显示已有 token
+  // 有已保存配置时视为"切换仓库"模式：预填已保存的 owner/repo 但不显示已有 token；
+  // 首次使用（或已清除配置）时预填默认仓库，用户只需填写私人令牌即可保存
   const isSwitchMode = !!repoConfig;
-  const formInitialValues = useMemo(() => {
-    if (isSwitchMode) {
-      return { owner: repoConfig!.owner, repo: repoConfig!.repo, token: '' };
-    }
-    return { owner: '', repo: '', token: '' };
-  }, [isSwitchMode]);
+  const formInitialValues = useMemo(() => ({
+    owner: repoConfig?.owner || DEFAULT_OWNER,
+    repo: repoConfig?.repo || DEFAULT_REPO,
+    token: '',
+  }), [repoConfig]);
+
+  // Form 的 initialValues 只在首次渲染时生效，配置被清除后需要把表单重置回默认值
+  useEffect(() => {
+    form.setFieldsValue(formInitialValues);
+  }, [form, formInitialValues]);
 
   const handleSave = async (values: RepoConfig) => {
     setLoading(true);
@@ -65,7 +74,8 @@ const RepoConfig: React.FC = () => {
 
       <Card className="repo-config-card" title="配置 Gitee 仓库">
         <Alert
-          message="Token 仅保存在浏览器本地，不会上传至任何第三方服务器"
+          message="已默认填写仓库信息，只需配置或更新私人令牌即可使用"
+          description="Token 仅保存在浏览器本地，不会上传至任何第三方服务器"
           type="info"
           showIcon
           icon={<SafetyCertificateOutlined />}
@@ -82,10 +92,11 @@ const RepoConfig: React.FC = () => {
             name="owner"
             label="仓库所有者（Owner）"
             rules={[{ required: true, message: '请输入仓库所有者' }]}
+            extra={`默认：${DEFAULT_OWNER}（如无特殊需要请勿修改）`}
           >
             <Input
               prefix={<UserOutlined />}
-              placeholder="例如：your-username"
+              placeholder={`默认：${DEFAULT_OWNER}`}
               size="large"
             />
           </Form.Item>
@@ -94,10 +105,11 @@ const RepoConfig: React.FC = () => {
             name="repo"
             label="仓库名称（Repo）"
             rules={[{ required: true, message: '请输入仓库名称' }]}
+            extra={`默认：${DEFAULT_REPO}（如无特殊需要请勿修改）`}
           >
             <Input
               prefix={<FolderOutlined />}
-              placeholder="例如：my-music"
+              placeholder={`默认：${DEFAULT_REPO}`}
               size="large"
             />
           </Form.Item>
@@ -106,7 +118,11 @@ const RepoConfig: React.FC = () => {
             name="token"
             label="私人令牌（Token）"
             rules={[{ required: true, message: '请输入私人令牌' }]}
-            extra="建议使用仅包含 projects 只读权限的 Token"
+            extra={
+              isSwitchMode
+                ? '更新令牌：填入新的私人令牌即可覆盖当前配置'
+                : '建议使用仅包含 projects 只读权限的 Token'
+            }
           >
             <Input.Password
               prefix={<KeyOutlined />}
