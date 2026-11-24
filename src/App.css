@@ -38,4 +38,7 @@
 
 .app-content.with-player {
   min-height: calc(100vh - 56px - 80px);
+  /* 为固定在底部的播放条留出空间（播放条约 82px + 间隙 + iOS 底部安全区），
+     否则内容滚动到底部时最后一首歌会被播放条遮挡 */
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
 }

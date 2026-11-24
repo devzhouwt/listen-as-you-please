@@ -9,7 +9,8 @@
   z-index: 1000;
   display: flex;
   flex-direction: column;
-  padding: 8px 16px;
+  /* 底部预留 iOS 全面屏安全区，避免控制按钮被 Home 指示条遮挡 */
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px));
 }
 
 .player-bar-inner {

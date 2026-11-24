@@ -13,7 +13,8 @@ html, body {
 }
 
 body {
-  padding-bottom: 64px; /* PlayerBar 高度占位 */
+  /* 底部播放条的留白统一由 .app-content.with-player 负责，避免与 body 内边距叠加 */
+  padding-bottom: 0;
 }
 
 #root {

@@ -11,3 +11,5 @@ tsconfig.tsbuildinfo
 *.tsbuildinfo
 .vite-tmp/
 .verify-config.png
+.verify-*
+.edge-profile*
